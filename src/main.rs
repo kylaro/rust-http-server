@@ -1,4 +1,4 @@
-use http::Request;
+//use http::Request;
 use http::Method;
 use server::Server;
 

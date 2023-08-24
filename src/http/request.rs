@@ -2,45 +2,51 @@ use super::method::{Method, MethodError};
 use std::error::Error;
 use std::fmt::{Result as FmtResult, Display, Formatter, Debug};
 use std::str::{self, Utf8Error};
+use std::convert::TryFrom;
 
-pub struct Request {
-    path: String,
-    query_string: Option<String>,
+
+pub struct Request<'buf> {
+    path: &'buf str,
+    query_string: Option<&'buf str>,
     method: Method,
 }
 
-impl Request {
+impl<'buf> Request<'buf> {
     fn from_byte_array(buf: &[u8]) -> Result<Self, String> {
         unimplemented!();
     }
 }
 
-impl TryFrom<&[u8]> for Request {
+impl<'buf> TryFrom<&'buf [u8]> for Request<'buf> {
     type Error = ParseError;
 
-    fn try_from(buf: &[u8]) -> Result<Self, Self::Error> {
+    //  GET /user?id=10 HTTP/1.1\r\n
+    fn try_from(buf: &'buf [u8]) -> Result<Request<'buf>, Self::Error> {
         let request = str::from_utf8(buf)?;
 
-        match get_next_word(request) {
-            Some( (method, request)) => {},
-            None => return Err(ParseError::InvalidRequest),
-        }
 
-        let (method, request) = get_next_word(request).ok_or(ParseError::InvalidRequest)?;
-        let (path, request) = get_next_word(request).ok_or(ParseError::InvalidRequest)?;
+        let (method_str, request) = get_next_word(request).ok_or(ParseError::InvalidRequest)?;
+        let (mut path, request) = get_next_word(request).ok_or(ParseError::InvalidRequest)?;
         let (protocol, request) = get_next_word(request).ok_or(ParseError::InvalidRequest)?;
 
         if protocol != "HTTP/1.1" {
             return Err(ParseError::InvalidProtocol);
         }
 
-        return {
-            Ok(Self {
-                path: path.to_string(),
-                query_string: None,
-                method: method.parse()?,
-            })
+        let method: Method = method_str.parse()?;
+
+        let mut query_string = None;
+        if let Some(i) = path.find('?') {
+            query_string = Some(&path[i + 1..]);
+            path = &path[..i];
         }
+
+        Ok( Self{
+            path: path,
+            query_string,
+            method,
+        })
+
     }
 
 }
