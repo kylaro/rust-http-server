@@ -1,6 +1,7 @@
-use super::method::Method;
+use super::method::{Method, MethodError};
 use std::error::Error;
 use std::fmt::{Result as FmtResult, Display, Formatter, Debug};
+use std::str::{self, Utf8Error};
 
 pub struct Request {
     path: String,
@@ -17,10 +18,49 @@ impl Request {
 impl TryFrom<&[u8]> for Request {
     type Error = ParseError;
 
-    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
-        unimplemented!();
+    fn try_from(buf: &[u8]) -> Result<Self, Self::Error> {
+        let request = str::from_utf8(buf)?;
+
+        match get_next_word(request) {
+            Some( (method, request)) => {},
+            None => return Err(ParseError::InvalidRequest),
+        }
+
+        let (method, request) = get_next_word(request).ok_or(ParseError::InvalidRequest)?;
+        let (path, request) = get_next_word(request).ok_or(ParseError::InvalidRequest)?;
+        let (protocol, request) = get_next_word(request).ok_or(ParseError::InvalidRequest)?;
+
+        if protocol != "HTTP/1.1" {
+            return Err(ParseError::InvalidProtocol);
+        }
+
+        return {
+            Ok(Self {
+                path: path.to_string(),
+                query_string: None,
+                method: method.parse()?,
+            })
+        }
     }
 
+}
+
+
+impl From<MethodError> for ParseError {
+    fn from(_: MethodError) -> Self {
+        Self::InvalidMethod
+    }
+}
+
+fn get_next_word(request: &str) -> Option<(&str, &str)> {
+
+    for (i, c) in request.chars().enumerate() {
+        if c == ' ' || c == '\r' {
+            return Some( (&request[..i], &request[i+1..]) );
+        }
+    }
+
+    None
 }
 
 pub enum ParseError {
@@ -28,6 +68,12 @@ pub enum ParseError {
     InvalidEncoding,
     InvalidProtocol,
     InvalidMethod,
+}
+
+impl From<Utf8Error> for ParseError {
+    fn from(_: Utf8Error) -> Self {
+        Self::InvalidEncoding
+    } 
 }
 
 impl Error for ParseError {}
